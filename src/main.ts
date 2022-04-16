@@ -1,0 +1,14 @@
+import { startServer } from "./server";
+import { connect } from "./config/typeorm";
+
+// docker run -d --rm --name postgres -e POSTGRES_PASSWORD=pass -p 5432:5432 postgres
+
+async function main() {
+  connect();
+  const port: number = 4000;
+  const app = await startServer();
+  app.listen(port);
+  console.log("App running on port", port);
+}
+
+main();
