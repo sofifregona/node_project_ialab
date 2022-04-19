@@ -1,10 +1,19 @@
-import { Mutation, Resolver, Arg, InputType, Field, Query } from "type-graphql";
+import {
+  Mutation,
+  Resolver,
+  Arg,
+  InputType,
+  Field,
+  Query,
+  UseMiddleware,
+  Ctx,
+} from "type-graphql";
 import { getRepository, Repository } from "typeorm";
 import { Length } from "class-validator";
 import { Author } from "../entity/author.entity";
+import { IContext, isAuth } from "../middlewars/auth.middleware";
 
 // INPUT TYPES
-
 @InputType()
 class AuthorFullNameInput {
   @Field()
@@ -13,15 +22,21 @@ class AuthorFullNameInput {
 }
 
 @InputType()
-class AuthorIdInput {
+class AuthorByIdInput {
   @Field(() => Number)
-  id!: number;
+  authorId!: number;
+}
+
+@InputType()
+class AuthorByFullNameInput {
+  @Field(() => String)
+  fullName!: string;
 }
 
 @InputType()
 class AuthorUpdateInput {
   @Field(() => Number)
-  id!: number; //! significa que es obligatorio
+  authorId!: number; //! significa que es obligatorio
 
   @Field()
   @Length(3, 64)
@@ -45,8 +60,10 @@ export class AuthorResolver {
   // MUTATIONS
 
   @Mutation(() => Author)
+  @UseMiddleware(isAuth)
   async createAuthor(
-    @Arg("input", () => AuthorFullNameInput) input: AuthorFullNameInput
+    @Arg("input", () => AuthorFullNameInput) input: AuthorFullNameInput,
+    @Ctx() context: IContext
   ): Promise<Author | undefined> {
     try {
       const createdAuthor = await this.authorRepository.insert({
@@ -62,47 +79,99 @@ export class AuthorResolver {
   }
 
   @Mutation(() => Author)
-  async updateOneAuthor(
-    @Arg("input", () => AuthorUpdateInput) input: AuthorUpdateInput
+  @UseMiddleware(isAuth)
+  async updateAuthorById(
+    @Arg("input", () => AuthorUpdateInput) input: AuthorUpdateInput,
+    @Ctx() context: IContext
   ): Promise<Author | undefined> {
-    const authorExist = await this.authorRepository.findOne(input.id);
-    if (!authorExist) {
-      throw new Error("Author does not exists");
+    try {
+      const authorExist = await this.authorRepository.findOne(input.authorId);
+      if (!authorExist) {
+        const error = new Error();
+        error.message = "Author does not exists";
+        throw error;
+      }
+      const updatedAuthor = await this.authorRepository.save({
+        id: input.authorId,
+        fullName: input.fullName,
+      });
+      return await this.authorRepository.findOne(updatedAuthor.id);
+    } catch (e: any) {
+      throw new Error(e);
     }
-    const updatedAuthor = await this.authorRepository.save({
-      id: input.id,
-      fullName: input.fullName,
-    });
-    return await this.authorRepository.findOne(updatedAuthor.id);
   }
 
   @Mutation(() => Boolean)
-  async deleteOneAuthor(
-    @Arg("input", () => AuthorIdInput) input: AuthorIdInput
+  @UseMiddleware(isAuth)
+  async deleteAuthorById(
+    @Arg("input", () => AuthorByIdInput) input: AuthorByIdInput,
+    @Ctx() context: IContext
   ): Promise<Boolean> {
-    const authorExist = await this.authorRepository.findOne(input.id);
-    if (!authorExist) {
-      throw new Error("Author does not exists");
+    try {
+      const authorExist = await this.authorRepository.findOne(input.authorId);
+      if (!authorExist) {
+        const error = new Error();
+        error.message = "Author does not exists";
+        throw error;
+      }
+      await this.authorRepository.delete(input.authorId);
+      return true;
+    } catch (e: any) {
+      throw new Error(e);
     }
-    await this.authorRepository.delete(input.id);
-    return true;
   }
 
   // QUERYS
 
   @Query(() => [Author])
-  async getAllAuthors(): Promise<Author[]> {
-    return await this.authorRepository.find({ relations: ["books"] }); //Find devuelve un array con los objetos
+  @UseMiddleware(isAuth)
+  async getAllAuthors(@Ctx() context: IContext): Promise<Author[]> {
+    return await this.authorRepository.find({
+      relations: ["books", "books.user"],
+    }); //Find devuelve un array con los objetos
   }
 
   @Query(() => Author)
-  async getOneAuthor(
-    @Arg("input", () => AuthorIdInput) input: AuthorIdInput
+  async getAuthorById(
+    @Arg("input", () => AuthorByIdInput) input: AuthorByIdInput,
+    @Ctx() context: IContext
   ): Promise<Author | undefined> {
-    const author = await this.authorRepository.findOne(input.id); //FindOne devuelve un sólo objeto
-    if (!author) {
-      throw new Error("Author does not exists");
+    try {
+      console.log("input:", input);
+      const author = await this.authorRepository.findOne(input.authorId, {
+        relations: ["books", "books.user"],
+      }); //FindOne devuelve un sólo objeto
+      console.log("authorRepository:", this.authorRepository);
+      if (!author) {
+        const error = new Error();
+        error.message = "Author does not exists";
+        throw error;
+      }
+      return author;
+    } catch (e: any) {
+      throw new Error(e);
     }
-    return author;
+  }
+
+  @Query(() => Author)
+  @UseMiddleware(isAuth)
+  async getAuthorByFullName(
+    @Arg("input", () => AuthorByFullNameInput) input: AuthorByFullNameInput,
+    @Ctx() context: IContext
+  ): Promise<Author | undefined> {
+    try {
+      const author = await this.authorRepository.findOne({
+        where: { fullName: input.fullName },
+        relations: ["books", "books.user"],
+      }); //FindOne devuelve un sólo objeto
+      if (!author) {
+        const error = new Error();
+        error.message = "Author does not exists";
+        throw error;
+      }
+      return author;
+    } catch (e: any) {
+      throw new Error(e);
+    }
   }
 }

@@ -3,14 +3,15 @@ import {
     Column,
     PrimaryGeneratedColumn,
     CreateDateColumn,
-    ManyToOne,
+    OneToMany,
+    BaseEntity,
   } from "typeorm";
-  import { Author } from "./author.entity";
+  import { Book } from "./book.entity";
   import { Field, ObjectType } from "type-graphql";
   
   @ObjectType()
   @Entity()
-  export class User {
+  export class User{
     @Field()
     @PrimaryGeneratedColumn() //Hace que el número sea autoincrementable
     id!: number;
@@ -26,8 +27,17 @@ import {
     @Field()
     @Column()
     password!: string;
+
+    @Field(() => [Book], { nullable: true })
+    @OneToMany(() => Book, (book) => book.user, { nullable: true })
+    borrowedBooks!: Book[];
+
+    @Field({ nullable: true })
+    @Column({ nullable: true })
+    NumberBorrowedBooks!: number;
   
     @Field()
     @CreateDateColumn({ type: "timestamp" })
     createdAt!: string;
   }
+  

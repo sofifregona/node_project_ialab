@@ -14,7 +14,6 @@ import { hash, compareSync } from "bcryptjs";
 import { sign } from "jsonwebtoken";
 import { environment } from "../config/environment";
 
-
 // INPUT TYPES
 
 @InputType()
@@ -43,7 +42,6 @@ class LoginInput {
 }
 
 // OBJECT TYPES
-
 @ObjectType()
 class LoginResponse {
   @Field()
@@ -71,38 +69,57 @@ export class AuthResolver {
   async register(
     @Arg("input", () => UserInput) input: UserInput
   ): Promise<User | undefined> {
-    const { fullName, email, password } = input;
-    const userExists = await this.userRepository.findOne({ where: { email } });
+    try {
+      const { fullName, email, password } = input;
+      const userExists = await this.userRepository.findOne({
+        where: { email },
+      });
 
-    // Valida que el e-mail no esté en uso
-    if (userExists) {
-      throw new Error("Email is no available");
+      if (userExists) {
+        const error = new Error();
+        error.message = "Email is no available";
+        throw error;
+      }
+
+      const hashedPassword = await hash(password, 10); // Encripta la contraseña
+
+      const newUser = await this.userRepository.insert({
+        fullName,
+        email,
+        password: hashedPassword,
+      });
+      return this.userRepository.findOne(newUser.identifiers[0].id);
+    } catch (e: any) {
+      throw new Error(e);
     }
-
-    const hashedPassword = await hash(password, 10); // Encripta la contraseña
-    const newUser = await this.userRepository.insert({
-      fullName,
-      email,
-      password: hashedPassword,
-    });
-    return this.userRepository.findOne(newUser.identifiers[0].id);
   }
 
   @Mutation(() => LoginResponse)
   async login(@Arg("input", () => LoginInput) input: LoginInput) {
-    const { email, password } = input;
-    const userFound = await this.userRepository.findOne({ where: { email } });
-    if (!userFound) {
-      throw new Error("Invalid credentials");
-    }
-    const isValidPassword: boolean = compareSync(password, userFound.password);
-    if (!isValidPassword) {
-      throw new Error("Invalid credentials");
-    }
-    const jwt: string = sign({id: userFound.id}, environment.JWT_SECRET)
-    return {
+    try {
+      const { email, password } = input;
+      const userFound = await this.userRepository.findOne({ where: { email } });
+      if (!userFound) {
+        const error = new Error();
+        error.message = "Invalid credentials";
+        throw error;
+      }
+      const isValidPassword: boolean = compareSync(
+        password,
+        userFound.password
+      );
+      if (!isValidPassword) {
+        const error = new Error();
+        error.message = "Invalid credentials";
+        throw error;
+      }
+      const jwt: string = sign({ id: userFound.id }, environment.JWT_SECRET);
+      return {
         userId: userFound.id,
         jwt: jwt,
+      };
+    } catch (e: any) {
+      throw new Error(e);
     }
   }
 }
